@@ -1,0 +1,76 @@
+# Four services: a broker, the gRPC API, the YOLO worker and the web UI.
+# api and worker share one named volume at /data (inputs/, results/), so the
+# worker can read the image the API stored and the API can serve the result.
+# The ui speaks gRPC to api only; it never touches /data itself.
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"     # AMQP: api publishes here, worker consumes here
+      - "15672:15672"   # management UI (http://localhost:15672, guest/guest)
+    # Only report "healthy" once the broker really answers, so api/worker start
+    # when AMQP is usable instead of crash-looping at boot.
+    # `ping` alone is not enough: it proves the Erlang node is up, which happens
+    # a few seconds BEFORE the AMQP listener accepts connections (observed), so
+    # `check_port_connectivity` (probes 5672/15672/...) is required as well.
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping && rabbitmq-diagnostics -q check_port_connectivity"]
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+    # Named volume: the durable queue and its messages survive a container
+    # restart/recreate (e.g. `docker compose down` + `up`).
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .                    # project root, so both Dockerfiles can see
+      dockerfile: api/Dockerfile    # requirements-*.txt and the code
+    environment:
+      RABBITMQ_HOST: rabbitmq       # service name = DNS name inside the network
+      DATA_DIR: /data               # mount point of the shared named volume
+      GRPC_PORT: "50051"
+    ports:
+      - "50051:50051"               # the host client connects to this
+    volumes:
+      - job-data:/data              # same named volume as the worker
+    depends_on:
+      rabbitmq:
+        condition: service_healthy  # wait for the healthcheck above
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      DATA_DIR: /data
+    volumes:
+      - job-data:/data              # same named volume as the api
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # The browser talks to this service only: plain JSON + the static page.
+  # It is a gRPC client of api, so it needs no volume and no broker access.
+  ui:
+    build:
+      context: .
+      dockerfile: ui/Dockerfile
+    environment:
+      GRPC_ADDRESS: api:50051       # service name = DNS name inside the network
+    ports:
+      - "8000:8000"                 # the page: http://localhost:8000
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  job-data:       # shared inputs/ + results/
+  rabbitmq-data:  # broker state
