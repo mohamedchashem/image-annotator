@@ -1,0 +1,19 @@
+# Runtime dependencies of ui/app.py (the FastAPI web UI + gRPC client of api/).
+# Versions pinned to what is installed in .venv (pip show).
+#
+# Not included on purpose:
+#   grpcio-tools  - the stubs are already generated; api/annotator_pb2*.py are
+#                   copied into the image instead of being regenerated.
+#   pillow, pika  - only api/ and the worker need those; this process is a
+#                   pure gRPC client and never touches images or RabbitMQ.
+
+# The web app: JSON API + the static page.
+fastapi==0.162.0
+uvicorn==0.54.0
+python-multipart==0.0.33   # multipart/form-data parsing for the upload field
+
+# gRPC client for the generated api/annotator_pb2* stubs. Keep the same pins as
+# requirements-api.txt: the stubs call ValidateProtobufRuntimeVersion(7, 35, 1).
+grpcio==1.85.1
+protobuf==7.36.2
+typing_extensions==4.16.0   # required by grpcio
