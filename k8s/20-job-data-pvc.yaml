@@ -1,0 +1,19 @@
+# One PVC shared by the api and the worker: the api writes
+# /data/inputs/<job_id>.jpg, the worker reads it and writes
+# /data/results/<job_id>.json + .jpg, and the api serves that back.
+#
+# No storageClassName: the cluster's default StorageClass (kind ships
+# "standard" / local-path-provisioner) provisions a hostPath volume on the node.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: job-data
+  namespace: image-annotator
+spec:
+  accessModes:
+    # ReadWriteOnce is enough: kind is a single node, so several Pods on that
+    # node can mount the same volume at the same time.
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

@@ -1,0 +1,111 @@
+# gRPC API: receives jobs, stores the image on the shared PVC, publishes to
+# RabbitMQ, serves results back.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: image-annotator
+  labels:
+    app: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      # fsGroup is kept as a belt-and-braces default, but it does NOT do the job
+      # here: the PVC is provisioned by the local-path driver as a hostPath
+      # volume and hostPath volumes ignore fsGroup (verified - /data stayed
+      # root:root). The initContainer below is what actually makes the volume
+      # writable for uid/gid 10001.
+      securityContext:
+        fsGroup: 10001
+      initContainers:
+        # Runs once, before the api starts, as root, only to fix ownership of the
+        # shared volume. Short-lived and does nothing but mkdir/chown, so the
+        # actual application never gets root.
+        - name: fix-data-permissions
+          image: image-annotator-api:v1
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - mkdir -p /data/inputs /data/results && chown -R 10001:10001 /data
+          securityContext:
+            # runAsNonRoot lives on the app container, not on the Pod, otherwise
+            # this root step would be rejected.
+            runAsUser: 0
+            runAsGroup: 0
+          volumeMounts:
+            - name: job-data
+              mountPath: /data
+      containers:
+        - name: api
+          image: image-annotator-api:v1
+          # The image is loaded into the node with `kind load docker-image`, so
+          # it must never be pulled from a registry.
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsUser: 10001          # same uid/gid as in the Dockerfile
+            runAsGroup: 10001
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          # Same variables as compose.yaml, rabbitmq = the Service name (DNS).
+          env:
+            - name: RABBITMQ_HOST
+              value: rabbitmq
+            - name: DATA_DIR
+              value: /data
+            - name: GRPC_PORT
+              value: "50051"
+          ports:
+            - name: grpc
+              containerPort: 50051
+          # The server has no HTTP endpoint, so readiness is a TCP check on the
+          # gRPC port; the Service only routes to the Pod once it listens.
+          readinessProbe:
+            tcpSocket:
+              port: grpc
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: job-data
+              mountPath: /data
+      volumes:
+        # Same claim as the worker: /data/inputs written here is read there.
+        - name: job-data
+          persistentVolumeClaim:
+            claimName: job-data
+---
+# Stable in-cluster address of the gRPC API (also what `kubectl port-forward`
+# targets when testing from the host).
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: image-annotator
+  labels:
+    app: api
+spec:
+  type: ClusterIP
+  selector:
+    app: api
+  ports:
+    - name: grpc
+      port: 50051
+      targetPort: grpc

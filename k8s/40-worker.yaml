@@ -1,0 +1,74 @@
+# YOLO worker: consumes jobs from the durable 'image_jobs' queue, reads
+# /data/inputs/<job_id>.jpg and writes /data/results/<job_id>.{json,jpg}.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: image-annotator
+  labels:
+    app: worker
+spec:
+  replicas: 1                  # `kubectl scale` raises this in the scaling test
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      # See 30-api.yaml: fsGroup alone does not work on a local-path (hostPath)
+      # volume, so an initContainer fixes the ownership of /data instead.
+      securityContext:
+        fsGroup: 10001
+      initContainers:
+        # Same one-shot ownership fix as in the api Pod; both Pods mount the same
+        # PVC, and `chown -R` is idempotent, so the duplicate is harmless.
+        - name: fix-data-permissions
+          image: image-annotator-worker:v1
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - mkdir -p /data/inputs /data/results && chown -R 10001:10001 /data
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+          volumeMounts:
+            - name: job-data
+              mountPath: /data
+      containers:
+        - name: worker
+          image: image-annotator-worker:v1
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsUser: 10001          # same uid/gid as in the Dockerfile
+            runAsGroup: 10001
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: RABBITMQ_HOST
+              value: rabbitmq
+            - name: DATA_DIR
+              value: /data
+            - name: GRPC_PORT
+              value: "50051"   # unused by the worker, kept identical to the api
+          # No readiness probe: the worker listens on no port, it only makes
+          # outbound connections. It is also safe for it to be "Ready" early -
+          # jobs submitted before it connects simply wait in the durable queue.
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi       # torch + YOLO weights need a lot of RAM
+            limits:
+              cpu: "2"
+              memory: 3Gi
+          volumeMounts:
+            - name: job-data
+              mountPath: /data
+      volumes:
+        - name: job-data
+          persistentVolumeClaim:
+            claimName: job-data

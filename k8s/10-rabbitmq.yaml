@@ -1,0 +1,76 @@
+# RabbitMQ broker: same image as in compose.yaml.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  namespace: image-annotator
+  labels:
+    app: rabbitmq
+spec:
+  replicas: 1                      # one broker is enough for this POC
+  selector:
+    matchLabels:
+      app: rabbitmq                # must match the Pod template labels below
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3-management
+          ports:
+            - name: amqp
+              containerPort: 5672
+            - name: management
+              containerPort: 15672
+          # Readiness = "clients can really connect". `ping` alone goes green a
+          # few seconds BEFORE the AMQP listener accepts (seen with compose), so
+          # the port check is required too; api/worker only get endpoints of the
+          # Service once this probe passes.
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - rabbitmq-diagnostics -q ping && rabbitmq-diagnostics -q check_port_connectivity
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 10
+            failureThreshold: 12
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          volumeMounts:
+            - name: rabbitmq-data
+              mountPath: /var/lib/rabbitmq
+      volumes:
+        # POC only: an emptyDir is tied to the Pod, so the durable queue and its
+        # messages are lost if this Pod is deleted or rescheduled. A real setup
+        # would use a PersistentVolumeClaim (or a StatefulSet with one).
+        - name: rabbitmq-data
+          emptyDir: {}
+---
+# Stable in-cluster DNS name "rabbitmq" for the api and worker Pods.
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: image-annotator
+  labels:
+    app: rabbitmq
+spec:
+  type: ClusterIP                  # cluster-internal only, no host ports needed
+  selector:
+    app: rabbitmq                  # routes to the Pods labelled app=rabbitmq
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: amqp             # named port of the container above
+    - name: management
+      port: 15672
+      targetPort: management

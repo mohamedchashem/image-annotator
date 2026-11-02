@@ -1,0 +1,6 @@
+# Everything in this project lives in its own namespace, so it can be deleted
+# (and re-created) as a unit without touching anything else in the cluster.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: image-annotator
