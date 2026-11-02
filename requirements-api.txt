@@ -1,0 +1,20 @@
+# Runtime dependencies of api/server.py (the gRPC front door).
+# Versions pinned to what is installed in .venv (pip freeze).
+#
+# Not included on purpose:
+#   grpcio-tools  - only needed to REGENERATE the stubs from annotator.proto;
+#                   the generated api/annotator_pb2*.py files are copied into
+#                   the image instead, which keeps the image small.
+#   pillow etc.   - everything below is the complete closure the server imports.
+
+# gRPC server + generated stubs. protobuf must be >= 7.35.1: the stubs call
+# runtime_version.ValidateProtobufRuntimeVersion(7, 35, 1).
+grpcio==1.85.1
+protobuf==7.36.2
+typing_extensions==4.16.0   # required by grpcio
+
+# Image validation (PIL.Image.open/verify/save) in SubmitImage.
+pillow==13.0.0
+
+# Publishing job messages to RabbitMQ.
+pika==1.4.4

@@ -1,0 +1,22 @@
+# Keep the build context small: everything here is host-only state.
+.venv
+data
+*.jpg
+annotated_*
+
+# Annotated results and sample images never go into an image: the containers
+# receive images from the client at runtime and write results to /data.
+annotated
+samples
+
+# Byte-code caches at any depth. A bare "__pycache__" only matches the context
+# root, so the "**/" form is what actually keeps api/ and worker/ caches out.
+**/__pycache__
+__pycache__
+
+rabbit_demo
+.git
+.gitignore
+
+# Docker files themselves are not needed inside the images.
+compose.yaml

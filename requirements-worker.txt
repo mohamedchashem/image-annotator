@@ -1,0 +1,54 @@
+# Runtime dependencies of worker/worker.py + worker/detector.py.
+# Versions pinned to what is installed in .venv (pip freeze).
+
+# CPU-only PyTorch: the "+cpu" wheels are not on PyPI, they come from this index.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.15.0+cpu
+torchvision==0.29.2+cpu
+
+# YOLOv8 inference. Pulls matplotlib/opencv/polars/psutil/requests/nvidia-ml-py
+# transitively; they are pinned below so every rebuild installs the same set.
+ultralytics==8.4.197
+ultralytics-thop==2.2.3
+ultralytics-platform==0.1.102
+
+# Image handling / drawing.
+opencv-python==5.0.0.93
+pillow==13.0.0
+numpy==2.5.4
+matplotlib==3.11.2
+polars==2.1.0
+polars-runtime-32==2.1.0
+psutil==7.2.2
+requests==2.34.2
+nvidia-ml-py==13.615.71
+
+# RabbitMQ consumer.
+pika==1.4.4
+
+# Transitive dependencies, pinned to the .venv versions as well.
+anyio==4.15.1
+certifi==2026.10.23
+charset-normalizer==3.5.2
+contourpy==1.4.0
+cycler==0.12.1
+filelock==4.2.4
+fonttools==4.68.0
+fsspec==2026.9.0
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.20
+Jinja2==3.1.6
+kiwisolver==1.5.1
+MarkupSafe==3.0.3
+mpmath==1.3.0
+networkx==3.7
+packaging==26.3
+pyparsing==3.3.3
+python-dateutil==4.0.0
+setuptools==78.1.0
+sympy==1.14.0
+typing_extensions==4.16.0
+urllib3==2.8.0
+tzdata==2026.6   # required by python-dateutil (a matplotlib dependency)

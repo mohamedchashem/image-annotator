@@ -1,0 +1,26 @@
+# Python virtualenv and byte-code caches.
+.venv/
+__pycache__/
+*.pyc
+
+# Environment files with real credentials.
+.env
+
+# Local runtime state written when api/ and worker/ run outside Docker:
+# uuid-named inputs/results, recreated on every job.
+data/
+
+# Annotated results are regenerated, so keep the folder but not the images.
+annotated/*
+!annotated/.gitkeep
+
+# Logs.
+*.log
+rabbit_demo/*.log
+
+# Editor and OS leftovers.
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
